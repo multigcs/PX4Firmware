@@ -154,6 +154,8 @@ controls_tick() {
 
 	/* receive signal strenght indicator (RSSI). 0 = no connection, 255: perfect connection */
 	uint16_t rssi = 0;
+	static uint16_t sbus_rssi = 0;
+	static uint8_t sbus_used = 0;
 
 #ifdef ADC_RSSI
 	if (r_setup_features & PX4IO_P_SETUP_FEATURES_ADC_RSSI) {
@@ -186,19 +188,29 @@ controls_tick() {
 
 	if (sbus_updated) {
 		r_status_flags |= PX4IO_P_STATUS_FLAGS_RC_SBUS;
+		sbus_used = 1;
 
 		rssi = 255;
 
 		if (sbus_frame_drop) {
 			r_raw_rc_flags |= PX4IO_P_RAW_RC_FLAGS_FRAME_DROP;
 			rssi = 100;
+			if (sbus_rssi > 2) {
+				sbus_rssi -= 2;
+			} else if (sbus_rssi > 0) {
+				sbus_rssi--;
+			}
 		} else {
 			r_raw_rc_flags &= ~(PX4IO_P_RAW_RC_FLAGS_FRAME_DROP);
+			if (sbus_rssi < 255) {
+				sbus_rssi++;
+			}
 		}
 
 		if (sbus_failsafe) {
 			r_raw_rc_flags |= PX4IO_P_RAW_RC_FLAGS_FAILSAFE;
 			rssi = 0;
+			sbus_rssi = 0;
 		} else {
 			r_raw_rc_flags &= ~(PX4IO_P_RAW_RC_FLAGS_FAILSAFE);
 		}
@@ -227,7 +239,11 @@ controls_tick() {
 		r_raw_rc_count = PX4IO_RC_INPUT_CHANNELS;
 
 	/* store RSSI */
-	r_page_raw_rc_input[PX4IO_P_RAW_RC_NRSSI] = rssi;
+	if (sbus_used == 1) {
+		r_page_raw_rc_input[PX4IO_P_RAW_RC_NRSSI] = sbus_rssi;
+	} else {
+		r_page_raw_rc_input[PX4IO_P_RAW_RC_NRSSI] = rssi;
+	}
 
 	/*
 	 * In some cases we may have received a frame, but input has still
